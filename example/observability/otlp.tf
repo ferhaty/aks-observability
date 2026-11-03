@@ -5,8 +5,8 @@
 resource "azapi_resource" "trace_dce" {
   type      = "Microsoft.Insights/dataCollectionEndpoints@2024-03-11"
   name      = "${var.name}-otlp"
-  parent_id = var.resource_group_id
-  location  = var.location
+  parent_id = data.azurerm_resource_group.monitoring.id
+  location  = data.azapi_resource.aks.location
   body = {
     properties = {
       description = "Direct OTLP trace ingestion"
@@ -25,8 +25,8 @@ locals {
 resource "azapi_resource" "trace_dcr" {
   type                      = "Microsoft.Insights/dataCollectionRules@2024-03-11"
   name                      = "${var.name}-otlp"
-  parent_id                 = var.resource_group_id
-  location                  = var.location
+  parent_id                 = data.azurerm_resource_group.monitoring.id
+  location                  = data.azapi_resource.aks.location
   schema_validation_enabled = true
   body = {
     properties = {

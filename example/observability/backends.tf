@@ -1,13 +1,13 @@
 resource "azurerm_monitor_workspace" "metrics" {
   name                          = "${var.name}-metrics"
   resource_group_name           = var.resource_group_name
-  location                      = var.location
+  location                      = data.azapi_resource.aks.location
   public_network_access_enabled = true
 }
 resource "azurerm_log_analytics_workspace" "logs" {
   name                = "${var.name}-logs"
   resource_group_name = var.resource_group_name
-  location            = var.location
+  location            = data.azapi_resource.aks.location
   sku                 = "PerGB2018"
   retention_in_days   = 30
 }
@@ -16,7 +16,7 @@ resource "azurerm_log_analytics_workspace" "logs" {
 resource "azurerm_application_insights" "traces" {
   name                         = "${var.name}-traces"
   resource_group_name          = var.resource_group_name
-  location                     = var.location
+  location                     = data.azapi_resource.aks.location
   workspace_id                 = azurerm_log_analytics_workspace.logs.id
   application_type             = "other"
   retention_in_days            = 30

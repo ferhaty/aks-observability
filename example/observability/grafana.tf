@@ -6,11 +6,15 @@ resource "helm_release" "grafana" {
   chart            = "grafana"
   version          = "14.0.1"
   values = [templatefile("${path.module}/grafana.yaml.tftpl", {
-    client_id         = var.environment.grafana_client_id
-    tenant_id         = var.environment.tenant_id
-    query_url         = var.environment.prometheus_query_url
+    client_id         = azurerm_user_assigned_identity.grafana.client_id
+    tenant_id         = var.tenant_id
+    query_url         = azurerm_monitor_workspace.metrics.query_endpoint
     admin_secret_name = var.grafana_admin_secret_name
   })]
+  depends_on = [
+    azurerm_federated_identity_credential.grafana,
+    azurerm_role_assignment.grafana_metrics
+  ]
   wait    = true
   timeout = 600
 }

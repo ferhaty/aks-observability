@@ -1,14 +1,14 @@
 resource "azurerm_monitor_data_collection_endpoint" "metrics" {
   name                          = "${var.name}-prometheus"
   resource_group_name           = var.resource_group_name
-  location                      = var.location
+  location                      = data.azapi_resource.aks.location
   kind                          = "Linux"
   public_network_access_enabled = true
 }
 resource "azurerm_monitor_data_collection_rule" "metrics" {
   name                        = "${var.name}-prometheus"
   resource_group_name         = var.resource_group_name
-  location                    = var.location
+  location                    = data.azapi_resource.aks.location
   kind                        = "Linux"
   data_collection_endpoint_id = azurerm_monitor_data_collection_endpoint.metrics.id
   destinations {
@@ -30,13 +30,13 @@ resource "azurerm_monitor_data_collection_rule" "metrics" {
 }
 resource "azurerm_monitor_data_collection_rule_association" "metrics" {
   name                    = "${var.name}-prometheus"
-  target_resource_id      = var.aks_id
+  target_resource_id      = data.azapi_resource.aks.id
   data_collection_rule_id = azurerm_monitor_data_collection_rule.metrics.id
 }
 resource "azurerm_monitor_data_collection_rule" "logs" {
   name                = "${var.name}-container-insights"
   resource_group_name = var.resource_group_name
-  location            = var.location
+  location            = data.azapi_resource.aks.location
   destinations {
     log_analytics {
       workspace_resource_id = azurerm_log_analytics_workspace.logs.id
@@ -66,6 +66,6 @@ resource "azurerm_monitor_data_collection_rule" "logs" {
 }
 resource "azurerm_monitor_data_collection_rule_association" "logs" {
   name                    = "ContainerInsightsExtension"
-  target_resource_id      = var.aks_id
+  target_resource_id      = data.azapi_resource.aks.id
   data_collection_rule_id = azurerm_monitor_data_collection_rule.logs.id
 }

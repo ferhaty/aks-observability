@@ -1,0 +1,5 @@
+# Add to the existing AKS configuration when enabling the monitoring add-ons.
+variable "observability_log_analytics_workspace_id" {
+  description = "log_analytics_workspace_id output from the observability configuration."
+  type        = string
+}
