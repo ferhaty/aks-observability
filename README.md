@@ -1,6 +1,6 @@
 # AKS observability examples
 
-Companion configuration for **Observability on Azure AKS: Metrics, Logs and Traces** by Ferhat Yildiz / Turing Technology Services. Visit the [Turing blog](https://blog.turingts.com/).
+Companion configuration for **Observability on Azure AKS: Metrics, Logs and Traces** by Ferhat Yildiz / Turing Technology Services. Visit the [Turing Technology Services blog](https://blog.turingts.com/).
 
 The example investigates a failed request to [Podinfo](https://github.com/stefanprodan/podinfo/tree/6.9.2), using three separate telemetry paths:
 
