@@ -14,8 +14,6 @@ variable "resource_group_name" {
 }
 variable "aks_name" { type = string }
 variable "aks_resource_group_name" { type = string }
-variable "kubeconfig_path" { type = string }
-variable "kubeconfig_context" { type = string }
 variable "grafana_admin_secret_name" {
   description = "Existing Kubernetes Secret in observability, with admin-user and admin-password keys."
   type        = string

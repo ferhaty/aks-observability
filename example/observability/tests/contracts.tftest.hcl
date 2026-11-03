@@ -53,8 +53,6 @@ variables {
   name                    = "offline-aks"
   aks_name                = "offline-aks"
   aks_resource_group_name = "offline-aks"
-  kubeconfig_path         = "./absent"
-  kubeconfig_context      = "offline"
   resource_group_name     = "offline-aks"
   subscription_id         = "00000000-0000-4000-8000-000000000000"
   tenant_id               = "22222222-2222-4222-8222-222222222222"

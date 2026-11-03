@@ -2,7 +2,7 @@ data "azurerm_resource_group" "monitoring" {
   name = var.resource_group_name
 }
 # Read only: AKS remains managed by its existing Terraform configuration.
-# Read ARM properties, not cluster credentials; Helm uses the authorized kubeconfig.
+# Read ARM properties, not cluster credentials; Helm uses its existing provider configuration.
 data "azapi_resource" "aks" {
   type      = "Microsoft.ContainerService/managedClusters@2024-10-01"
   name      = var.aks_name

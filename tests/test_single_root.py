@@ -7,6 +7,26 @@ ROOT = Path(__file__).resolve().parents[1]
 OBS = ROOT / 'example/observability'
 
 class SingleRoot(unittest.TestCase):
+    def test_provider_authentication_is_an_existing_prerequisite(self):
+        versions = (OBS/'versions.tf').read_text()
+        self.assertIn('required_providers {', versions)
+        self.assertNotRegex(versions, r'(?m)^provider\s+"')
+        self.assertNotIn('distinct state key', versions)
+        for source in [*OBS.glob('*.tf'), OBS/'terraform.tfvars.example',
+                       OBS/'tests/contracts.tftest.hcl']:
+            text = source.read_text()
+            self.assertNotIn('kubeconfig_path', text)
+            self.assertNotIn('kubeconfig_context', text)
+            self.assertNotIn('kube_admin_config', text)
+        variables = (OBS/'variables.tf').read_text()
+        self.assertEqual(set(re.findall(r'variable "([^"]+)"', variables)), {
+            'name', 'subscription_id', 'tenant_id', 'resource_group_name',
+            'aks_name', 'aks_resource_group_name', 'grafana_admin_secret_name'})
+        readme = (ROOT/'README.md').read_text()
+        self.assertIn('providers.tf', readme)
+        self.assertIn('not inherited', readme)
+        self.assertIn('existing working kubectl access', readme)
+
     def test_all_new_resources_are_in_single_root(self):
         body = '\n'.join(p.read_text() for p in OBS.glob('*.tf'))
         for resource in ['azurerm_monitor_workspace', 'azurerm_log_analytics_workspace',

@@ -12,7 +12,7 @@ Build the monitoring layer for an existing managed-identity AKS cluster using it
 
 `example/observability/` creates **all new monitoring resources and both Helm releases**. Helm receives endpoints and client IDs directly from those resources. The Collector gets trace-DCR-scoped write access; Grafana gets workspace-scoped read access through a different federated identity. No generated input file or separate Helm state is needed.
 
-Only settings on the **existing AKS resource** stay in its existing Terraform configuration. Do not import AKS into this state, declare it again or patch it through AzAPI. The AzAPI data source reads selected ARM properties without retrieving a kubeconfig. Give observability a distinct state key; reuse the pipeline's backend if useful, never its cluster state file.
+`example/observability/` groups the additions to your existing Terraform setup; it does not require a new deployment or state. Keep the **existing AKS resource** in its existing configuration rather than declaring it again. The supplied example reads selected ARM properties through AzAPI without retrieving cluster credentials. Its commands show that configuration separately; when integrating with existing code, adapt the paths and references to that code.
 
 | Path | Purpose |
 | --- | --- |
@@ -23,7 +23,9 @@ Only settings on the **existing AKS resource** stay in its existing Terraform co
 
 ## Prerequisites
 
-Use an existing managed-identity AKS cluster with Linux amd64 capacity, OIDC and Workload Identity enabled, and an authorized kubeconfig/context for that same cluster in the existing pipeline. The observability root checks those identity settings before proceeding. If needed, merge `aks-settings/identity.hcl` inside the existing AKS resource and apply that configuration first. Preserve its resource address and unrelated settings; check snippet compatibility with its provider/module rather than blindly upgrading it.
+Use an existing managed-identity AKS cluster with Linux amd64 capacity, OIDC and Workload Identity enabled, and existing configured AzureRM, AzAPI and Helm providers for that same cluster in the existing pipeline. The observability root checks those identity settings before proceeding. If needed, merge `aks-settings/identity.hcl` inside the existing AKS resource and apply that configuration first. Preserve its resource address and unrelated settings; check snippet compatibility with its provider/module rather than blindly upgrading it.
+
+Integrate these additions into the Terraform root that already has your configured providers. If you run `example/observability/` separately, reuse or adapt that configuration there (for example, in an untracked `providers.tf`); providers are not inherited from another folder or state. `versions.tf` retains the required provider packages and versions, not authentication configuration. The Azure providers must use the intended subscription/tenant, and Helm must target the same AKS cluster. With resource providers registered separately, retain `resource_provider_registrations = "none"` for AzureRM and `skip_provider_registration = true` and `enable_preflight = false` for AzAPI. This guide does not choose an AKS authentication method. The shell steps use existing working kubectl access; `KUBE_CONTEXT` selects the intended cluster for those commands, not Terraform provider authentication.
 
 The pipeline needs Azure permissions to create the monitoring resources, identities/federations and scoped role assignments, and Kubernetes permissions for Helm. Contributor alone cannot create role assignments. Updating the AKS settings uses the existing cluster deployment permissions. Register the required resource providers through the existing subscription setup: `Microsoft.ContainerService`, `Microsoft.Insights`, `Microsoft.AlertsManagement`, `Microsoft.Monitor`, `Microsoft.OperationalInsights` and `Microsoft.ManagedIdentity`. This example creates no managed Grafana resource.
 
@@ -31,10 +33,10 @@ Use one Azure public-cloud region, derived from AKS, for the new monitoring reso
 
 This is **new monitoring onboarding**, not migration of an existing shared installation. Inspect AKS add-ons, DCR associations and shared agent ConfigMaps with `steps/01-inspect.sh` before changing them. If monitoring is already configured, reconcile its destinations/rules first; do not add duplicate collection paths or silently repoint shared logs to a fresh workspace.
 
-## Apply in this order
+## Apply the supplied example in this order
 
 1. Ensure the existing AKS configuration has OIDC and Workload Identity enabled as above. Confirm the `observability` namespace and Grafana admin Secret: `steps/00-namespace.sh` and `steps/10-grafana-secret.sh` create them only if absent. Use approved local credential files; keep their contents out of Git, Terraform and shell tracing. The Secret is for Grafana login, not Azure authentication.
-2. Fill in `observability/terraform.tfvars.example` through the pipeline's normal input mechanism. Initialize, review and apply the **complete observability root**. It reads the existing cluster, creates the monitoring resources and native associations, and installs Collector/Grafana after their federations and role assignments. No AKS mutation is in this plan. The native associations alone do not enable collection.
+2. With the existing provider configuration in this root, fill in `observability/terraform.tfvars.example` through the pipeline's normal input mechanism. Initialize, review and apply the **complete observability root**. It reads the existing cluster, creates the monitoring resources and native associations, and installs Collector/Grafana after their federations and role assignments. No AKS mutation is in this plan. The native associations alone do not enable collection.
 3. Read the new workspace ID with `terraform -chdir=example/observability output -raw log_analytics_workspace_id`. Pass that one value as `observability_log_analytics_workspace_id` to the existing AKS configuration. Add `aks-settings/variables.tf.example` and merge `aks-settings/monitoring.hcl` inside its existing cluster resource. Review and apply this in-place change through its normal pipeline: it enables managed metrics and MSI Container insights. Keep the already-enabled OIDC/Workload Identity settings. Do not use CLI/portal onboarding in parallel, which can create another set of rules or destinations.
 4. Inspect the actual add-ons and DCR associations with step 01 and check Collector/Grafana rollouts with steps 04 and 12. A successful Terraform apply does not eliminate federation/RBAC propagation time. Diagnose export/query failures without broadening roles. Until the AKS add-ons are enabled, native metrics and container logs will not arrive.
 5. From `example/`, inspect/merge the Podinfo native scrape job (steps 02/03), preserving unrelated jobs. Check that `container-azm-ms-agentconfig` allows stderr for `demo`. Apply Podinfo (05), keep its port-forward running (06), generate traffic (07), and follow `queries/metrics.promql`, `queries/logs.kql` and `queries/traces.kql`.
@@ -59,7 +61,7 @@ Use LAW `OTelSpans` to look up the trace ID from the `ContainerLogV2` request-st
 
 ## Local validation
 
-Without cloud credentials, from the repository root:
+After adding the provider configuration to this root, from the repository root:
 
 ```sh
 terraform fmt -check -recursive
@@ -69,7 +71,7 @@ terraform -chdir=example/observability test
 python3 -m unittest discover -s tests -v
 ```
 
-`terraform test` uses mocked providers; its `command = apply` is not a real deployment. Never substitute ordinary `terraform apply` for this check. Validated locally; Azure deployment, API acceptance, token exchange, webhook mutation, native-agent ingestion, KQL and portal behaviour were not tested.
+`terraform validate` checks configuration, not credentials or connectivity. The supplied files alone do not configure deployment access. `terraform test` uses mocked providers; its `command = apply` is not a real deployment. Never substitute ordinary `terraform apply` for this check. Validated locally; Azure deployment, API acceptance, token exchange, webhook mutation, native-agent ingestion, KQL and portal behaviour were not tested.
 
 ## Cleanup
 
