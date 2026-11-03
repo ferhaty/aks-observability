@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: Namespace
+metadata: {name: demo}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: podinfo, namespace: demo}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: podinfo}}
+  template:
+    metadata: {labels: {app: podinfo}}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      nodeSelector: {kubernetes.io/os: linux, kubernetes.io/arch: amd64}
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, fsGroup: 10001}
+      containers:
+        - name: podinfo
+          image: ghcr.io/stefanprodan/podinfo:6.9.2@sha256:cab90e04829cdae73199a8402882a4e3ccaf251b8a0d50bdefede0ab3f6371e7
+          command: [./podinfo]
+          args: [--port=9898, --level=debug, --random-delay=false, --random-error=false]
+          env:
+            - {name: PODINFO_OTEL_SERVICE_NAME, value: podinfo}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://otel-collector.observability.svc.cluster.local:4317
+          ports: [{name: http, containerPort: 9898}]
+          readinessProbe: {httpGet: {path: /readyz, port: http}}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, initialDelaySeconds: 5}
+          resources:
+            requests: {cpu: 100m, memory: 64Mi}
+            limits: {cpu: 500m, memory: 128Mi}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+          volumeMounts: [{name: data, mountPath: /data}]
+      volumes: [{name: data, emptyDir: {sizeLimit: 16Mi}}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: podinfo, namespace: demo}
+spec:
+  type: ClusterIP
+  selector: {app: podinfo}
+  ports: [{name: http, port: 9898, targetPort: http}]

@@ -1,0 +1,9 @@
+let wanted_trace = "<32-hex-trace-id-from-the-request-log>";
+OTelSpans
+| where TimeGenerated > ago(30m)
+| where TraceId == wanted_trace
+| project TimeGenerated, TraceId, SpanId, ParentSpanId, Name, Kind,
+          ServiceName, StatusCode, ResultCode,
+          http_status = tostring(Attributes["http.response.status_code"]),
+          DurationMs
+| order by TimeGenerated asc

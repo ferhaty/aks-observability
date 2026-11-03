@@ -1,0 +1,65 @@
+fullnameOverride: grafana
+replicas: 1
+image:
+  registry: docker.io
+  repository: grafana/grafana
+  tag: 13.2.4-distroless
+nodeSelector:
+  kubernetes.io/os: linux
+  kubernetes.io/arch: amd64
+serviceAccount:
+  create: true
+  name: grafana
+  automountServiceAccountToken: false
+  annotations:
+    azure.workload.identity/client-id: '${client_id}'
+    azure.workload.identity/tenant-id: '${tenant_id}'
+podLabels:
+  azure.workload.identity/use: 'true'
+automountServiceAccountToken: false
+rbac: {create: false}
+admin:
+  existingSecret: '${admin_secret_name}'
+  userKey: admin-user
+  passwordKey: admin-password
+service: {type: ClusterIP}
+ingress: {enabled: false}
+persistence: {enabled: false}
+testFramework: {enabled: false}
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 472
+  runAsGroup: 472
+  fsGroup: 472
+resources:
+  requests: {cpu: 100m, memory: 256Mi}
+  limits: {memory: 512Mi}
+grafana.ini:
+  auth:
+    azure_auth_enabled: true
+  azure:
+    cloud: AzureCloud
+    managed_identity_enabled: false
+    workload_identity_enabled: true
+    forward_settings_to_plugins: grafana-azure-monitor-datasource, prometheus, grafana-azure-data-explorer-datasource, mssql, grafana-azureprometheus-datasource, grafana-databricks-datasource
+plugins:
+  - grafana-azureprometheus-datasource@1.0.10@https://grafana.com/api/plugins/grafana-azureprometheus-datasource/versions/1.0.10/download?os=linux&arch=amd64
+shadowBundledPlugins: false
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Azure Prometheus
+        uid: azure-prometheus
+        type: grafana-azureprometheus-datasource
+        access: proxy
+        isDefault: true
+        editable: false
+        url: '${query_url}'
+        jsonData:
+          httpMethod: POST
+          timeInterval: 15s
+          manageAlerts: false
+          oauthPassThru: false
+          azureCredentials:
+            authType: workloadidentity

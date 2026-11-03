@@ -1,0 +1,8 @@
+up{job="podinfo"}
+absent_over_time(up{job="podinfo"}[5m])
+sum by (status) (rate(http_request_duration_seconds_count{job="podinfo",path="status"}[5m]))
+(
+  sum(rate(http_request_duration_seconds_count{job="podinfo",path="status",status=~"5.."}[5m]))
+  / sum(rate(http_request_duration_seconds_count{job="podinfo",path="status"}[5m]))
+)
+and (sum(rate(http_request_duration_seconds_count{job="podinfo",path="status"}[5m])) > 0)

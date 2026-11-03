@@ -1,0 +1,11 @@
+ContainerLogV2
+| where TimeGenerated > ago(30m)
+| where PodNamespace == "demo" and ContainerName == "podinfo"
+| extend event = parse_json(tostring(LogMessage))
+| where tostring(event.msg) == "request started"
+| where tostring(event.uri) == "/status/500"
+| project TimeGenerated, PodName,
+          method = tostring(event.method),
+          uri = tostring(event.uri), trace_id = tostring(event.trace_id)
+| order by TimeGenerated desc
+| take 20

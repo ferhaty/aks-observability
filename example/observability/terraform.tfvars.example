@@ -1,0 +1,16 @@
+# PLACEHOLDERS ONLY. Obtain every real value from the existing resource owner.
+# Supply through your existing pipeline; keep local *.tfvars out of Git.
+environment = {
+  subscription_id      = "00000000-0000-4000-8000-000000000000"
+  tenant_id            = "22222222-2222-4222-8222-222222222222"
+  resource_group_name  = "REPLACE_WITH_IDENTITY_RESOURCE_GROUP"
+  location             = "REPLACE_WITH_APPROVED_REGION"
+  oidc_issuer_url      = "https://REPLACE_WITH_EXACT_OWNER_OIDC_ISSUER/"
+  trace_dcr_id         = "/subscriptions/REPLACE/resourceGroups/REPLACE/providers/Microsoft.Insights/dataCollectionRules/REPLACE"
+  trace_endpoint       = "https://REPLACE_WITH_OWNER_TRACE_INGESTION_HOST/datacollectionRules/REPLACE/streams/Microsoft-OTLP-Traces/otlp/v1/traces"
+  monitor_workspace_id = "/subscriptions/REPLACE/resourceGroups/REPLACE/providers/Microsoft.Monitor/accounts/REPLACE"
+  prometheus_query_url = "https://REPLACE_WITH_OWNER_PROMETHEUS_QUERY_ENDPOINT"
+  kubeconfig_path      = "REPLACE_WITH_AUTHORIZED_LOCAL_KUBECONFIG_PATH"
+  kubeconfig_context   = "REPLACE_WITH_APPROVED_KUBE_CONTEXT"
+}
+grafana_admin_secret_name = "grafana-admin"

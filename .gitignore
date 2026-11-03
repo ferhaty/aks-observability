@@ -1,0 +1,35 @@
+# Runtime dependencies and Terraform state/plans; keep the provider lock tracked.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.plan
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+.terraformrc
+terraform.rc
+
+# Local credentials, kubeconfigs and private environment values.
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+*kubeconfig*
+.kube/
+*admin-user*
+*admin-password*
+secrets/
+
+# Local validation/runtime output, not example source.
+checks/
+receipts/
+logs/
+*.log
+__pycache__/
+*.pyc
+.DS_Store
