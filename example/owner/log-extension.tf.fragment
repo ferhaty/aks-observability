@@ -1,0 +1,15 @@
+# Inside the existing ContainerInsights DCR; preserve other required streams.
+data_sources {
+  extension {
+    name           = "ContainerInsightsExtension"
+    extension_name = "ContainerInsights"
+    streams        = ["Microsoft-ContainerLogV2"]
+    extension_json = jsonencode({
+      dataCollectionSettings = {
+        interval              = "1m"
+        namespaceFilteringMode = "Off"
+        enableContainerLogV2  = true
+      }
+    })
+  }
+}
