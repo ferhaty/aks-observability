@@ -1,6 +1,0 @@
-# Inside the EXISTING ContainerInsights DCR. Preserve its other streams/flows.
-data_flow {
-  streams       = ["Microsoft-ContainerLogV2"]
-  destinations  = ["ciworkspace"]
-  transform_kql = "source"
-}

@@ -1,99 +1,97 @@
 # AKS observability examples
 
-Companion configuration for **Observability on Azure AKS: Metrics, Logs and Traces** by Ferhat Yildiz / Turing Technology Services. Visit the [Turing Technology Services blog](https://blog.turingts.com/).
+Companion configuration for **Observability on Azure AKS: Metrics, Logs and Traces** by Ferhat Yildiz / Turing Technology Services. [Turing Technology Services blog](https://blog.turingts.com/).
 
-The example investigates a failed request to [Podinfo](https://github.com/stefanprodan/podinfo/tree/6.9.2), using three separate telemetry paths:
+This builds the monitoring layer for an **existing managed-identity AKS cluster and existing Terraform CI/CD process**. It does not create a second cluster, an Azure Managed Grafana service or a new pipeline.
 
-- **Metrics:** AKS `ama-metrics` → Azure Monitor managed Prometheus → self-hosted Grafana Community Edition (OSS).
-- **Logs:** Container insights / `ama-logs` → its Data Collection Rule (DCR) → `ContainerLogV2` in Log Analytics.
-- **Traces:** Podinfo OTLP/gRPC → a traces-only OpenTelemetry Collector → Azure Monitor native OTLP HTTP/protobuf → `OTelSpans`.
+- **Metrics:** native AKS `ama-metrics` → managed Prometheus in a newly created Azure Monitor workspace → Grafana Community Edition on AKS.
+- **Logs:** native Container insights / `ama-logs` → a complete ContainerInsights DCR and AKS association → `ContainerLogV2` in a newly created Log Analytics workspace.
+- **Traces:** upstream Podinfo → OTLP/gRPC → traces-only Collector → native Azure OTLP HTTP/protobuf DCE/DCR → `OTelSpans` in the same Log Analytics workspace, associated with the new Application Insights resource.
 
-Grafana has its own Workload Identity with **Monitoring Data Reader** on the Azure Monitor workspace. The Collector has a different identity with **Monitoring Metrics Publisher** on the trace DCR. Neither uses the pipeline's deployment credentials.
+The Collector and Grafana receive separate user-assigned identities, exact service-account federations and scoped Azure roles. URLs and identities flow from resource outputs to Helm; no hand-copied DCR IDs, client IDs or endpoints.
 
-## Scope and prerequisites
+## Ownership and prerequisites
 
-This is an addition to an **existing AKS cluster and deployment pipeline**, not a cluster bootstrap module or an automatic cloud deployment. There are no GitHub Actions workflows.
+The normal path creates the taught observability resources in the **existing AKS owner's state**. Only Collector/Grafana Helm releases use the supplementary `example/observability` state. Existing backend reuse is optional: use the established backend with a **distinct state key**, or another approved backend. Never point both roots at the same state.
 
-Before using the deployment files, the resource owners must supply and approve:
+You need an existing managed-identity AKS cluster, Linux amd64 capacity, the existing cluster Terraform root and CI/CD identity, authorized Kubernetes access, and approval for `observability` and `demo` namespaces. The existing root must be compatible with AzureRM **5.12.0**; upgrading an older provider/cluster module is a separate reviewed change. Preserve its existing cluster resource address, network/node settings and lifecycle protection. Do not apply the mock fixture as a real cluster.
 
-- A managed-identity AKS cluster with Linux amd64 capacity, OIDC issuer and Microsoft Entra Workload ID enabled; authorized Kubernetes access and an existing Terraform backend/authentication process.
-- Native metrics onboarding to the chosen **Azure Monitor workspace**, including its DCR/DCE, AKS association, ingestion identity and Prometheus **query endpoint**.
-- Container insights onboarding to the chosen **Log Analytics workspace**, including its DCR/association and agent configuration that retains Podinfo debug request-start events.
-- An **OTLP-enabled Application Insights setup** and its exact trace DCR resource ID, full per-signal ingestion URL and destination Log Analytics workspace. This may be a different workspace from Container insights.
-- Approval for the `observability` tooling namespace and an isolated `demo` namespace. Namespace separation is not a NetworkPolicy boundary.
-- Subscription/tenant, identity resource group/location, exact OIDC issuer URL, and an authorized kubeconfig path/context. Preserve an issuer's trailing slash.
-- An owner-managed `grafana-admin` Secret in `observability`, with `admin-user` and `admin-password` keys, before installing Grafana.
-- Pipeline permission to create the supplementary identities, federations and scoped role assignments, plus separate Kubernetes authorization for Helm. The owners retain cluster, workspace, DCR and provider-registration responsibilities.
+The pipeline must be allowed to create monitoring resources, identities/federations and role assignments in the approved resource group, and update the existing AKS resource. Contributor alone is insufficient for Azure role assignments; use an appropriately scoped RBAC administration permission. Helm also needs separate Kubernetes permissions. Resource-provider registration stays with the subscription owner: native onboarding documents `Microsoft.ContainerService`, `Microsoft.Insights`, `Microsoft.AlertsManagement` and `Microsoft.Monitor`; this module also uses `Microsoft.OperationalInsights` and `Microsoft.ManagedIdentity`. No `Microsoft.Dashboard` resource is deployed.
 
-**Native OTLP ingestion is a preview design choice.** Confirm the intended region, available onboarding and preview acceptance with the backend owner before deployment. The Collector components are community-supported; local configuration checks do not prove Azure support. This example does not enable AKS auto-instrumentation as a second trace path. An Application Insights connection string is not a substitute for the full OTLP endpoint and Entra authentication.
+**This is new monitoring onboarding, not automatic migration of shared monitoring.** Before adding it, inspect AKS add-ons, DCR associations and both shared agent ConfigMaps. If they already serve other workloads, stop and reconcile ownership: retain/reuse the existing destinations or intentionally migrate/adopt their complete rules in the owning state. Do not attach a second log collection rule, overwrite a shared scrape ConfigMap or silently repoint the cluster to a fresh LAW. Reuse is an optional, reviewed adaptation, not a prerequisite to provision all backends in this example.
 
-Workloads need their existing DNS/routing and access to image registries, Azure ingestion/query endpoints and Entra. Grafana downloads its pinned Azure Prometheus plugin at startup; restricted networks need an approved package mirror or preinstalled image. This repository does not establish Private Link connectivity.
+### Native OTLP status, region and feature checks
+
+Microsoft's newer [OpenTelemetry options overview](https://learn.microsoft.com/en-us/azure/azure-monitor/containers/opentelemetry-options) explicitly calls the **OpenTelemetry Collector route generally available**, while the older [collection/experience overview](https://learn.microsoft.com/en-us/azure/azure-monitor/containers/collect-use-observability-data) still labels its combined feature preview. The separate **AMA and AKS application-monitoring add-ons remain preview** in the newer overview. This example uses the direct Collector route, not those add-ons.
+
+Follow the [direct Collector manual-orchestration guide](https://learn.microsoft.com/en-us/azure/azure-monitor/containers/opentelemetry-protocol-ingestion): create a regular workspace-based Application Insights component, leave automatic OTLP provisioning **Off**, and associate it through the DCR's documented `references.applicationInsights`, `enrichWithReference` and `replaceResourceIdWithReference`. Do not add an invented Application Insights `otlpEnabled` field or switch on portal onboarding afterwards.
+
+The direct Collector guide does **not** give an authoritative region list or require the AKS `AzureMonitorAppMonitoringPreview` feature. The [AKS add-on page](https://learn.microsoft.com/en-us/azure/azure-monitor/containers/kubernetes-open-protocol) documents that flag and its own regional exclusions; do not transfer them to this architecture. Confirm native DCE/DCR OTLP availability, Application Insights experience availability and your service policy in the intended subscription/region. No preview features are registered by this code.
+
+Use one Azure public-cloud region for AKS and the new resources. Public authenticated ingestion/query endpoints are enabled; existing egress, DNS, TLS access to Azure/Entra and registry access are prerequisites. This is **not** a Private Link/AMPLS, sovereign-cloud or cross-region example. Grafana downloads its pinned plugin during startup; restricted networks require an approved mirror or preinstalled image. No resource availability, token exchange, Azure ingestion, KQL or portal experience was tested against Azure.
 
 ## Files
 
 | Path | Purpose |
 | --- | --- |
-| `example/observability/` | Supplementary Terraform root: separate identities, RBAC, Collector and Grafana Helm releases, and values templates. Includes the pinned provider lock. |
-| `example/observability/terraform.tfvars.example` | Placeholder inputs only; replace every value through the existing pipeline's input mechanism. |
-| `example/observability/tests/` | Terraform mock-provider contracts and rejected-endpoint controls; no Azure calls. |
-| `example/owner/*.tf.fragment` | Fragments for the **existing owner's state**, not standalone onboarding or a second cluster resource. |
-| `example/native/prometheus-config` | One replica-level native-agent scrape job for the single Podinfo replica. |
-| `example/podinfo/podinfo.yaml` | Pinned upstream demo image, Deployment, ClusterIP Service and `demo` namespace. |
-| `example/steps/` | Article command snippets; inspect and run only the relevant step, not every file in numerical order. |
-| `example/queries/` | PromQL and KQL for the manual metrics → log → trace investigation. |
+| `example/modules/azure-monitor/` | Complete Azure resources: AMW, LAW, Application Insights, two DCEs, three DCRs, two native AKS associations, two dedicated identities/federations/role grants. No AKS resource. |
+| `example/owner/` | Integration into the existing owner root, matching AKS properties and provider requirements. Not another deployable cluster root. |
+| `example/observability/` | Helm-only root, values templates, provider lock and mock tests. Uses generated owner output plus authorized kubeconfig path/context. |
+| `tests/owner-fixture/` | **Mock-only** complete AKS owner stand-in: checks the real dependency graph and output → Helm propagation. Never run ordinary plan/apply here. |
+| `example/native/`, `example/podinfo/`, `example/queries/` | One native scrape job, pinned Podinfo workload, PromQL and native-schema KQL. |
+| `example/steps/` | Bounded article command snippets. Read individual steps; do not execute the directory as a deployment script. |
 
-The owner fragments deliberately do **not** create a cluster, metrics destination, complete ContainerInsights rule, or native OTLP backend. Merge them into the existing resource definitions without importing a cluster into two states or replacing unrelated streams/destinations. Keep the owner's existing backend configuration for the supplementary root; do not accidentally deploy using local state.
+Azure Monitor can also create its own default workspace-managed DCR/DCE. Those service-managed resources are not a second Podinfo scrape; this code attaches only its cluster-specific native metrics rule. The ContainerInsights rule deliberately collects **only ContainerLogV2**, not the full inventory/performance stream set for every Container insights dashboard. It retains debug request-start events with `transform_kql = "source"`. Shared agent stderr settings still govern collection; `namespaceFilteringMode` is not a ContainerLogV2 namespace filter.
 
-## Version pins
+## Integrate and deploy through the existing pipeline
 
-| Component | Version |
-| --- | --- |
-| Terraform requirement | `>= 1.10.0, < 2.0.0` |
-| AzureRM provider | `5.12.0` |
-| Helm provider | `3.3.0` |
-| OpenTelemetry Collector chart / contrib image | `0.176.1` / `0.162.0` |
-| Grafana community chart / OSS image | `14.0.1` / `13.2.4-distroless` |
-| Grafana Azure Prometheus plugin | `1.0.10` |
-| Podinfo | `6.9.2`, image digest pinned in the manifest |
+1. Place `example/modules/azure-monitor` in the owner's source tree. Merge `owner/providers.tf.example` and `owner/monitoring.tf.example` into the **existing AKS root**, adapting the module source path and existing resource/variable names. Supply `monitoring_name`, the approved same-region `location`, subscription/tenant inputs already used by that root. Let its normal `terraform init` update its existing lock; do not overwrite that lock with this repository's standalone test locks.
+2. Merge `owner/aks-monitoring.hcl` **inside the existing AKS resource**. It enables managed metrics, MSI Container insights, OIDC and Workload ID. Its LAW reference is to the new module output. Nothing imports or declares AKS in the supplementary root. Do not use `az aks update` behind Terraform's back. Avoid module-wide `depends_on`: AKS depends on LAW, whereas federations/associations depend on AKS outputs. The graph is intentionally resource-specific.
+3. Review the owner's plan in the existing CI/CD process: new backends/identity resources and in-place monitoring properties, **no AKS replacement** and no unrelated destination/association changes. Apply only through that process. Inspect the actual resources/associations with `steps/01-inspect.sh`, and inspect the full trace DCR via its generated ID. The AKS native add-ons manage their own ingestion identity; the Microsoft native onboarding templates do not require a blanket Publisher grant to the cluster. The direct Collector's new trace-DCR-scoped Publisher grant is separate.
+4. Export the owner's explicit output as the supplementary root's generated input. Set absolute `OWNER_ROOT` and `EXAMPLE_ROOT` and run `steps/00-owner-output.sh` after the owner apply. It calls `terraform output -json observability_inputs`; that output already has the `{environment: ...}` shape. Use a protected pipeline artifact (or equivalent direct pipeline output handoff), not copied endpoint strings. Regenerate on every monitoring change. It contains resource configuration, not a kubeconfig or token. Do not export the whole state.
+5. The namespace owner confirms whether `observability` exists; if absent, `steps/00-namespace.sh` creates it and refuses to replace an existing namespace. Create `grafana-admin` only if absent using `steps/10-grafana-secret.sh`, which reads owner-approved local user/password files. Keep their contents out of Git, Terraform inputs/state and shell tracing. Use `admin.existingSecret`; the Grafana login is not an Azure credential.
+6. Supply only `kubeconfig_path` and `kubeconfig_context` (and an alternate Secret name if needed), as shown in `observability/terraform.tfvars.example`. Configure its approved backend with a **distinct state key**. Review/apply this Helm-only root through the existing pipeline after the owner output handoff and Secret creation. Inspect Collector/Grafana with steps 04, 11 and 12. Federation/RBAC ordering does not eliminate propagation delay; inspect export/query failures and retry verification after propagation rather than giving broader roles.
+7. From `example/`, merge the native Podinfo scrape job via its ConfigMap owner (steps 02/03). One Service target means one Podinfo replica. No annotation scrape, PodMonitor, ServiceMonitor or Collector metrics receiver for the same endpoint. Check `container-azm-ms-agentconfig` retains stderr for `demo`; do not replace a shared policy wholesale.
+8. Apply Podinfo using step 05. Keep its local port-forward in a separate terminal (06), then run bounded traffic (07). Use Grafana for PromQL, LAW Logs for `queries/logs.kql`, and the unchanged trace ID in `queries/traces.kql` against **OTelSpans**, not AppTraces.
 
-These are the example's tested pins, not a request to upgrade an existing cluster or a claim that they are the latest versions. The lock was checked on Linux amd64; generate/check the required provider checksums when using another workstation platform.
+**Keep Podinfo private and credential-free.** Its diagnostic and fault endpoints are not production endpoints. The Collector's in-cluster gRPC receiver is unauthenticated; enforce network policy before exposing it to untrusted clients. Grafana is single-replica/ephemeral and reachable through a loopback port-forward. UI-created dashboards/users can disappear on Pod replacement; production persistence, availability and access policy are separate decisions.
 
-## Start with local checks
+## Application Insights investigation
 
-Clone the repository, then validate without configuring Azure credentials:
+The DCR assigns the new Application Insights resource to incoming native spans. Microsoft documents **Search** and **Transaction details** for OTel investigation; use a trace sample there if the experience is available for your resource, with LAW `OTelSpans` as the explicit lookup in this exercise. We did not verify that portal experience live. This is not classic AppRequests/AppTraces ingestion.
+
+Do not expect a complete Application Insights Performance/Failures dashboard or prebuilt OTLP metric queries from this example. Microsoft says those experiences expect **delta OTLP metrics and exponential histograms**. Podinfo's Prometheus histogram remains on the native Prometheus path, and the Collector exports **only traces**. Adding a second metrics pipeline merely to populate a UI would violate this example's single-owner design. No automatic Grafana log-to-trace link is provisioned.
+
+## Pins and offline checks
+
+Terraform `>= 1.10.0, < 2.0.0`; tested here with **1.17.1**. AzureRM **5.12.0**, AzAPI **2.13.0**, Helm provider **3.3.0**. Collector chart/contrib **0.176.1 / 0.162.0**. Grafana community chart/OSS image **14.0.1 / 13.2.4-distroless**, Azure Prometheus plugin **1.0.10**. Podinfo **6.9.2**, image digest pinned in YAML. These are tested pins, not an instruction to upgrade a cluster blindly.
+
+From the repository root, without cloud credentials:
 
 ```sh
-git clone https://github.com/ferhaty/aks-observability.git
-cd aks-observability
-terraform -chdir=example/observability fmt -check -recursive
-terraform -chdir=example/observability init -backend=false -input=false -lockfile=readonly
-terraform -chdir=example/observability validate
-terraform -chdir=example/observability test
-for file in example/steps/*.sh; do bash -n "$file" || break; done
+terraform fmt -check -recursive
+for root in example/modules/azure-monitor example/observability tests/owner-fixture; do
+  terraform -chdir="$root" init -backend=false -input=false -lockfile=readonly
+  terraform -chdir="$root" validate
+  terraform -chdir="$root" test
+done
+python3 -m unittest discover -s tests -v
+for file in example/steps/*.sh; do bash -n "$file" || exit; done
 ```
 
-`init` downloads providers; the test file mocks **both** providers. Its `command = apply` applies the mocked graph, not Azure resources or Helm releases. Do not substitute an ordinary `terraform apply` for `terraform test`. Do not run a real plan/apply until the owners have supplied the approved resources, backend, credentials and access through their established process.
+`init` only resolves modules/providers. `terraform test` uses mock providers and explicit overrides for the nested Helm releases; its `command = apply` is a **mock graph evaluation**, not permission to run real `terraform apply`. The full owner fixture catches dependency cycles and propagation from created workspace/DCR/identity outputs through AKS to Helm values. Negative controls reject an HTTP issuer/endpoint, an Application Insights connection string in place of OTLP and a shared Collector/Grafana identity.
 
-The source was locally checked with Terraform validation/mock tests, Helm rendering/linting, Kubernetes JSON schemas and Collector configuration validation. **It has not been deployed to Azure.** These checks do not verify Azure permissions, token exchange, the Workload ID webhook, managed-agent ingestion, KQL execution or end-to-end delivery.
+Locally verified: fmt, backend-disabled init, validate, mock graph tests, both pinned chart renders/lints, Kubernetes schemas with invalid-spec controls, actual Collector configuration parser with invalid queue-size control, and actual pinned Podinfo → Collector gRPC → loopback HTTP/protobuf with matching log/span TraceId. **No Azure provisioning or deployment occurred.** Local checks do not establish Azure permissions, API acceptance, token exchange, webhook mutation, native-agent ingestion, KQL or managed service availability. The local HTTP sink is not Azure.
 
-## Deployment sequence for an approved existing environment
+## Cleanup and data ownership
 
-Run file-based kubectl commands from `example/`, their common parent. Set `KUBE_CONTEXT` explicitly and inspect that context before each mutating step; the snippets do not select or create a cluster for you.
+Stop port-forwards and delete only the named Podinfo Deployment/Service (step 09). Remove only its added scrape job, preserving all unrelated jobs. Destroy the **Helm-only supplementary root** through its owner before deleting the exclusive Grafana Secret (optional step 13). Keep namespaces used by other workloads.
 
-1. Have the existing owners complete native onboarding and verify the destination DCR associations. `steps/01-inspect.sh` contains read-only inspection commands and also requires `AKS_ID`.
-2. Inspect the existing `ama-metrics-prometheus-config` ConfigMap with `steps/02-inspect-scrape.sh`. **If it exists, merge the Podinfo job through its owner; do not replace the other jobs.** Use `steps/03-create-scrape.sh` only when it does not exist and creation is approved. Do not also scrape Podinfo through annotations, a PodMonitor/ServiceMonitor or a Collector Prometheus receiver.
-3. Have the namespace owner create `observability`. If the Grafana Secret does not already exist, `steps/10-grafana-secret.sh` reads its two values from local owner-managed files named by `GRAFANA_ADMIN_USER_FILE` and `GRAFANA_ADMIN_PASSWORD_FILE`. Do not commit these files or their contents. Use the owner's secret-management process for existing Secrets.
-4. Supply the placeholder inputs and install the supplementary Terraform root through the existing approved pipeline. `steps/04-inspect-collector.sh` checks the Collector; `steps/11-grafana-access.sh` checks Grafana and starts a loopback port-forward to `http://localhost:3000`. Keep that terminal open; `steps/12-grafana-inspect.sh` provides diagnostic reads.
-5. After confirming ownership of `demo`, deploy Podinfo using `steps/05-podinfo.sh`. In another terminal run `steps/06-port-forward.sh`, then use `steps/07-traffic.sh` to generate bounded success/error traffic. The intentional `/status/500` response is the exercise, not an unexpected test failure.
-6. Run each expression in `queries/metrics.promql` separately in Grafana. Find the request-start event with `queries/logs.kql` in the **container-log workspace**; copy its trace ID into `queries/traces.kql` in the **trace workspace**. `steps/08-local-logs.sh` helps distinguish missing source logs from ingestion problems. Log events describe request start, not the final response status; inspect the server span for the outcome.
+Backends, native agent associations and federated identities remain in the **AKS owner's state**. Keep them if monitoring continues. To retire this monitoring stack completely, first remove dependent workloads/Helm, then review the cluster owner's in-place removal of the monitoring add-on blocks and associations. Only after collection is detached, retention/export obligations are satisfied and every consumer is checked should that owner remove dedicated DCRs/DCEs, identity grants/federations, Application Insights, LAW and AMW. A workspace deletion destroys retained telemetry. Never run `terraform destroy` on the whole AKS owner root, delete a shared resource group, or remove OIDC/Workload ID used by others. This is staged resource ownership, not a blanket cleanup command.
 
-Grafana uses ephemeral storage in this small example: local UI changes can disappear on Pod replacement. Its admin login is not an Azure credential. Production persistence, access controls, availability and network policy remain owner decisions.
+## Source of the native OTLP ARM shape
 
-**Keep Podinfo private and free of credentials.** It exposes diagnostic/configuration and fault endpoints. Do not inject Azure credentials, API keys or real application secrets into this demo, and do not expose it through a public ingress. The supplied ClusterIP plus loopback port-forward is the intended access path.
-
-## Cleanup
-
-Stop the local port-forwards. `steps/09-cleanup.sh` removes only the named Podinfo Deployment and Service, not the namespace or Azure monitoring backends. Remove the exact added scrape job through its owner without deleting a shared ConfigMap. Remove Collector/Grafana and their supplementary identity/RBAC resources only through the same owning Terraform state, after reviewing that plan. `steps/13-grafana-secret-cleanup.sh` is optional: run it only if this exercise created that Secret and nothing else uses it. Never destroy shared workspaces, DCRs or the existing cluster as demo cleanup.
+The trace DCR is a narrowed implementation of [Microsoft's documented manual-orchestration template](https://github.com/microsoft/AzureMonitorCommunity/blob/67ecd88b374a71e4b5701d81e7ef5f53cdf71dc9/Azure%20Services/Azure%20Monitor/OpenTelemetry/OTLP_DCE_DCR_ARM_Template.txt). It keeps `directDataSources.otelTraces`, all three trace streams, the LAW destination and Application Insights references/enrichment. It removes the AMA `dataSources`, direct logs/metrics and their destinations/flows. Both resources use `2024-03-11`; the Collector URL combines the DCE **logs ingestion endpoint** and DCR **immutable ID** returned by Azure. AzAPI schema validation stays enabled. Native ARM API fields are sourced, but local mocks do not prove service acceptance.
 
 ## Upstream software and licensing
 
