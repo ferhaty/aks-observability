@@ -5,6 +5,9 @@ rollout: {strategy: Recreate, rollingUpdate: {}}
 autoscaling: {enabled: false}
 image: {repository: otel/opentelemetry-collector-contrib, tag: '0.162.0'}
 command: {name: otelcol-contrib}
+nodeSelector:
+  kubernetes.io/os: linux
+  kubernetes.io/arch: amd64
 serviceAccount:
   create: true
   name: otel-collector
